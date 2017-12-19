@@ -140,6 +140,103 @@
           }
         }
       })
+      .directive('dynamicImage', function($compile) {
+        var template = '';
+        return {
+          restrict: 'A',
+          scope: true,
+          require: 'ngModel',
+          link: function(scope, element, attr) {
+            var required = (attr.ngRequired && attr.ngRequired == "true"?"required":"");
+            var content = element.html();
+            var templateDyn    =
+                '<div ngf-drop="" ngf-drag-over-class="dragover">\
+                   <img style="width: 100%;" ng-if="$ngModel$" data-ng-src="{{$ngModel$.startsWith(\'http\') || ($ngModel$.startsWith(\'/\') && $ngModel$.length < 1000)? $ngModel$ : \'data:image/png;base64,\' + $ngModel$}}">\
+                   <input ng-if="!$ngModel$" autocomplete="off" tabindex="-1" class="uiSelectRequired ui-select-offscreen" style="top: inherit !important; margin-left: 85px !important;margin-top: 50px !important;" type=text ng-model="$ngModel$" $required$>\
+                   <div class="btn" ng-if="!$ngModel$" ngf-drop="" ngf-select="" ngf-change="cronapi.internal.setFile(\'$ngModel$\', $file)" ngf-pattern="\'image/*\'" ngf-max-size="$maxFileSize$">\
+                     $userHtml$\
+                   </div>\
+                   <div class="remove-image-button btn btn-danger btn-xs" ng-if="$ngModel$" ng-click="$ngModel$=null">\
+                     <span class="glyphicon glyphicon-remove"></span>\
+                   </div>\
+                   <div class="btn btn-info btn-xs start-camera-button-attribute" ng-if="!$ngModel$" ng-click="cronapi.internal.startCamera(\'$ngModel$\')">\
+                     <span class="glyphicon glyphicon-facetime-video"></span>\
+                   </div>\
+                 </div>';
+            var maxFileSize = "";
+            if (attr.maxFileSize)
+              maxFileSize = attr.maxFileSize;
+
+            templateDyn = $(templateDyn
+                .split('$ngModel$').join(attr.ngModel)
+                .split('$required$').join(required)
+                .split('$userHtml$').join(content)
+                .split('$maxFileSize$').join(maxFileSize)
+            );
+
+            element.html(templateDyn);
+            $compile(templateDyn)(element.scope());
+          }
+        }
+      })
+      .directive('dynamicFile', function($compile) {
+        var template = '';
+        return {
+          restrict: 'A',
+          scope: true,
+          require: 'ngModel',
+          link: function(scope, element, attr) {
+            var s = scope;
+            var required = (attr.ngRequired && attr.ngRequired == "true"?"required":"");
+
+            var splitedNgModel = attr.ngModel.split('.');
+            var datasource = splitedNgModel[0];
+            var field = splitedNgModel[splitedNgModel.length-1];
+            var number = Math.floor((Math.random() * 1000) + 20);
+            var content = element.html();
+            
+            var maxFileSize = "";
+            if (attr.maxFileSize)
+              maxFileSize = attr.maxFileSize;
+
+            var templateDyn    = '\
+                                <div ng-show="!$ngModel$" ngf-drop="" ngf-drag-over-class="dragover">\
+                                  <input ng-if="!$ngModel$" autocomplete="off" tabindex="-1" class="uiSelectRequired ui-select-offscreen" style="top: inherit !important;margin-left: 85px !important;margin-top: 50px !important;" type=text ng-model="$ngModel$" $required$>\
+                                  <div class="btn" ngf-drop="" ngf-select="" ngf-change="cronapi.internal.uploadFile(\'$ngModel$\', $file, \'uploadprogress$number$\')" ngf-max-size="$maxFileSize$">\
+                                    $userHtml$\
+                                  </div>\
+                                  <div class="progress" data-type="bootstrapProgress" id="uploadprogress$number$" style="display:none">\
+                                    <div class="progress-bar" role="progressbar" aria-valuenow="70" aria-valuemin="0" aria-valuemax="100" style="width:0%">\
+                                      <span class="sr-only"></span>\
+                                    </div>\
+                                  </div>\
+                                </div> \
+                                <div ng-show="$ngModel$" class="upload-image-component-attribute"> \
+                                  <div class="btn btn-danger btn-xs ng-scope" style="float:right;" ng-if="$ngModel$" ng-click="$ngModel$=null"> \
+                                    <span class="glyphicon glyphicon-remove"></span> \
+                                  </div> \
+                                  <div> \
+                                    <div ng-bind-html="cronapi.internal.generatePreviewDescriptionByte($ngModel$)"></div> \
+                                    <a href="javascript:void(0)" ng-click="cronapi.internal.downloadFileEntity($datasource$,\'$field$\')">download</a> \
+                                  </div> \
+                                </div> \
+                                ';
+            templateDyn = $(templateDyn
+                .split('$ngModel$').join(attr.ngModel)
+                .split('$datasource$').join(datasource)
+                .split('$field$').join(field)
+                .split('$number$').join(number)
+                .split('$required$').join(required)
+                .split('$userHtml$').join(content)
+                .split('$maxFileSize$').join(maxFileSize)
+                
+                );            
+                                
+            element.html(templateDyn);
+            $compile(templateDyn)(element.scope());
+          }
+        }
+      })
       .directive('dynamicFile', function($compile) {
         var template = '';
         return {
@@ -300,10 +397,14 @@
             return moment.utc(value).format(maskValue);
           } else if (value instanceof Date) {
             return moment.utc(value).format(maskValue);
-          } else {
+          } else if (typeof value == 'number') {
+            return format(maskValue, value);
+          }  else if (value != undefined && value != null && value != "") {
             var input = $("<input type=\"text\">");
             input.mask(maskValue);
-            return input.masked(value);;
+            return input.masked(value);
+          } else {
+            return value;
           }
         };
       })
@@ -321,23 +422,45 @@
             var button = fieldset.find('button[cronapp-filter]');
             if (!button)
               return;
-            
+
             var filters = button.data('filters');
             if (!filters)
               filters = [];
-            
+
             var index = -1;
-            var field = bindedFilter.split(operator)[0];
+            var ngModel = $element.attr('ng-model');
             $(filters).each(function(idx) {
-              if (this.startsWith(field)) {
+              if (this.ngModel == ngModel)
                 index = idx;
-              }
             });
-            
+
             if (index > -1)
               filters.splice(index, 1);
-            filters.push(bindedFilter);
+            
+            if (bindedFilter.length > 0) {
+              var bindedFilterJson = {
+                "ngModel" : ngModel,
+                "bindedFilter" : bindedFilter
+              };
+              filters.push(bindedFilterJson);
+            }
             button.data('filters', filters);
+          },
+          makeAutoPostSearch: function($element, bindedFilter, datasource) {
+            var fieldset = $element.closest('fieldset');
+            if (fieldset && fieldset.length > 0) {
+              var button = fieldset.find('button[cronapp-filter]');
+              if (button && button.length > 0) {
+                var filters = button.data('filters');
+                if (filters && filters.length > 0) {
+                  bindedFilter = '';
+                  $(filters).each(function() {
+                      bindedFilter += this.bindedFilter+";";
+                  });
+                }
+              }
+            }
+            datasource.search(bindedFilter);
           },
           inputBehavior: function(scope, element, attrs, ngModelCtrl, $element, typeElement, operator, autopost) {
             var filterTemplate = '';
@@ -389,11 +512,11 @@
                 var bindedFilter = filterTemplate.split('{value}').join(value);
                 if (ngModelCtrl.$viewValue.length == 0)
                   bindedFilter = '';
-                if (autopost)
-                  datasource.search(bindedFilter);
-                else 
-                  selfDirective.setFilterInButton($element, bindedFilter, operator);
                 
+                selfDirective.setFilterInButton($element, bindedFilter, operator);
+                if (autopost)
+                  selfDirective.makeAutoPostSearch($element, bindedFilter, datasource);
+
               });
             }
             else {
@@ -409,10 +532,9 @@
                   if (this.value.length == 0)
                     bindedFilter = '';
 
+                  selfDirective.setFilterInButton($element, bindedFilter, operator);
                   if (autopost)
-                    datasource.search(bindedFilter);
-                  else 
-                    selfDirective.setFilterInButton($element, bindedFilter, operator);
+                    selfDirective.makeAutoPostSearch($element, bindedFilter, datasource);
                 });
               }
               else {
@@ -442,11 +564,10 @@
                   var bindedFilter = filterTemplate.split('{value}').join(value);
                   if (value.toString().length == 0)
                     bindedFilter = '';
-                  
+
+                  selfDirective.setFilterInButton($element, bindedFilter, operator);
                   if (autopost)
-                    datasource.search(bindedFilter);
-                  else 
-                    selfDirective.setFilterInButton($element, bindedFilter, operator);
+                    selfDirective.makeAutoPostSearch($element, bindedFilter, datasource);
                 });
               }
             }
@@ -457,12 +578,16 @@
               var datasourceName = '';
               if (attrs.crnDatasource)
                 datasourceName = attrs.crnDatasource;
-              else 
+              else
                 datasourceName = $element.parent().attr('crn-datasource')
 
               var filters = $this.data('filters');
-              if (datasourceName && datasourceName.length > 0 && filters && filters.length > 0) {
-                var bindedFilter = filters.join(';');
+              if (datasourceName && datasourceName.length > 0 && filters) {
+                var bindedFilter = '';
+                $(filters).each(function() {
+                    bindedFilter += this.bindedFilter+";";
+                });
+                
                 var datasourceToFilter = eval(datasourceName);
                 datasourceToFilter.search(bindedFilter);
               }
@@ -473,18 +598,18 @@
             var typeElement = $element.data('type') || $element.attr('type');
             if (attrs.asDate != undefined)
               typeElement = 'date';
-            
+
             var operator = '=';
             if (attrs.cronappFilterOperator && attrs.cronappFilterOperator.length > 0)
               operator = attrs.cronappFilterOperator;
-            
+
             var autopost = true;
             if (attrs.cronappFilterAutopost && attrs.cronappFilterAutopost == "false")
               autopost = false;
-            
-            if ($element[0].tagName == "INPUT") 
+
+            if ($element[0].tagName == "INPUT")
               this.inputBehavior(scope, element, attrs, ngModelCtrl, $element, typeElement, operator, autopost);
-            else 
+            else
               this.buttonBehavior(scope, element, attrs, ngModelCtrl, $element, typeElement, operator, autopost);
           }
         }
@@ -701,18 +826,18 @@ function maskDirective($compile, $translate, attrName) {
 
         if (ngModelCtrl) {
           ngModelCtrl.$formatters.push(function (value) {
-            if (value != undefined && value != null) {
-              $element.inputmask('setvalue', value);
-              var num = $element.val();
-              return num;
+            if (value != undefined && value != null && value != '') {
+              return format(mask, value);
             }
 
             return null;
           });
 
           ngModelCtrl.$parsers.push(function (value) {
-            if (value != undefined && value != null) {
-              return $element.inputmask('unmaskedvalue');
+            if (value != undefined && value != null && value != '') {
+              var unmaskedvalue = $element.inputmask('unmaskedvalue');
+              if (unmaskedvalue != '')
+                return unmaskedvalue;
             }
 
             return null;
